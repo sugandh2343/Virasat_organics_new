@@ -1,0 +1,35 @@
+import { useState,useRef,useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { PrimaryButton,SecondaryButton,EmptyState,ModalShell } from '../ui';
+import { CheckoutItems,CheckoutTotals,AddressDetails } from '../checkout/CheckoutParts';
+import { money } from '../cart/CartContents';
+import { useStorefront } from '../../state/StorefrontContext';
+import { getSessionDemoOrders,getSessionDemoOrder } from '../../services/checkoutService';
+import { filterDemoOrders,formatOrderDate,canCancelDemoOrder,reorderEligibility } from '../../domain/orderSelectors';
+import { orderFilters,orderDisclaimer } from '../../mock-data/orderPresentation';
+import OrderTimeline from './OrderTimeline';
+import '../../styles/checkout.css';
+import '../../styles/orders.css';
+const detailPath=(base,id)=>base+'/orders/'+encodeURIComponent(id);
+export function OrderCard({order,basePath='/account'}) {
+ return <article className="order-card"><div className="order-card-heading"><div><p className="eyebrow">SESSION DEMO ORDER</p><h2 className="order-reference">{order.orderId || order.id}</h2><p>{formatOrderDate(order.createdAt)}</p></div><span className="order-status">Demo · {order.status}</span></div><ul className="order-card-items">{order.items.map((item,index)=><li key={item.productId+':'+index}>{item.name} · {item.size} <strong>× {item.quantity}</strong></li>)}</ul><div className="order-card-footer"><div><strong>{money(order.total)}</strong><p>{order.paymentMethod} · {order.paymentStatus || 'Not recorded (demo)'}</p></div><SecondaryButton to={detailPath(basePath,order.id)}>View Details</SecondaryButton></div></article>;
+}
+export function RecentDemoOrders({basePath='/account'}) {
+ const {state}=useStorefront();const orders=filterDemoOrders(getSessionDemoOrders(state.session));
+ return <article className="account-card recent-demo-orders"><h2>Recent demo orders</h2><p>{orders.length} total demo orders</p><p>Latest status: {orders[0]?.status || 'No orders yet'}</p>{orders.slice(0,3).map(order=><p key={order.id}><SecondaryButton to={detailPath(basePath,order.id)}>{order.id} · {order.status}</SecondaryButton></p>)}<SecondaryButton to={basePath+'/orders'}>My Orders</SecondaryButton></article>;
+}
+export function OrderHistory({basePath='/account'}) {
+ const {state}=useStorefront();const [query,setQuery]=useState('');const [status,setStatus]=useState('All');const [sort,setSort]=useState('newest');
+ const all=getSessionDemoOrders(state.session);const orders=filterDemoOrders(all,{query,status,sort});
+ return <><p className="eyebrow">YOUR EVERYDAY VIRASAT</p><h1>My Orders</h1><p className="order-notice">{orderDisclaimer}</p><div className="order-filters"><label>Search demo reference<input type="search" value={query} onChange={event=>setQuery(event.target.value)}/></label><label>Order status<select value={status} onChange={event=>setStatus(event.target.value)}>{orderFilters.map(value=><option key={value}>{value}</option>)}</select></label><label>Sort orders<select value={sort} onChange={event=>setSort(event.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label><SecondaryButton onClick={()=>{setQuery('');setStatus('All');setSort('newest');}}>Reset filters</SecondaryButton></div><p className="order-result-count" role="status">{orders.length} demo {orders.length===1?'order':'orders'}</p>{orders.length?<div className="order-list">{orders.map(order=><OrderCard key={order.id} order={order} basePath={basePath}/>)}</div>:<EmptyState title={all.length?'No matching demo orders.':'Your order story starts here.'} description={all.length?'Try another reference or reset your filters.':'No demo orders have been placed in this session.'}/>}<SecondaryButton to="/shop">Continue Shopping</SecondaryButton></>;
+}
+export function OrderDetail({basePath='/account',cartPath='/cart'}) {
+ const {orderId}=useParams();const {state,dispatch}=useStorefront();const [confirm,setConfirm]=useState(false);const [message,setMessage]=useState('');const heading=useRef(null);
+ const order=getSessionDemoOrder(state.session,orderId);
+ useEffect(()=>{heading.current?.focus();setConfirm(false);setMessage('');},[orderId]);
+ useEffect(()=>{if(order?.status==='Cancelled')heading.current?.focus();},[order?.status]);
+ if(!order)return <EmptyState title="Demo order unavailable." description="This reference is unknown or belongs to another demo session. Refresh or logout clears local orders."><SecondaryButton to={basePath+'/orders'}>Back to My Orders</SecondaryButton></EmptyState>;
+ const reorder=reorderEligibility(order,state.catalogue || [],state.cart);
+ return <><SecondaryButton to={basePath+'/orders'}>Back to My Orders</SecondaryButton><p className="eyebrow">SESSION DEMO ORDER</p><h1 ref={heading} tabIndex={-1}>A record of your essentials.</h1><p className="order-reference">{order.orderId || order.id}</p><p>{formatOrderDate(order.createdAt)} · <strong>Demo {order.status}</strong></p><p className="order-notice">{orderDisclaimer}</p><OrderTimeline order={order}/><div className="order-detail-grid"><section className="order-detail-panel"><h2>Ordered items</h2><CheckoutItems items={order.items}/><h2>Delivery address snapshot</h2><AddressDetails address={order.deliveryAddressSnapshot || order.address}/><p>Instructions: {order.deliveryInstructions || order.instructions || 'None recorded'}</p><p className="quiet-note">Address is unverified. This snapshot stays unchanged when saved addresses are edited.</p></section><aside className="order-detail-panel"><h2>Order summary</h2><CheckoutTotals summary={order} settings={order}/><p>Payment method: {order.paymentMethod}</p><p>Payment status: {order.paymentStatus || 'Not recorded (demo)'}</p><p className="quiet-note">No payment confirmation or refund is generated by this prototype.</p></aside></div><div className="order-actions">{canCancelDemoOrder(order)&&<SecondaryButton onClick={()=>setConfirm(true)}>Cancel Demo Order</SecondaryButton>}<PrimaryButton disabled={!reorder.eligible} onClick={()=>{dispatch({type:'orders/reorder',sessionId:state.session.instanceId,orderId:order.id});setMessage('Eligible items added to the demo cart at current prices. No order was placed.');}}>Reorder to cart</PrimaryButton><SecondaryButton to={cartPath}>View Cart</SecondaryButton></div><p className="quiet-note">{reorder.reason}</p><p role="status">{state.orderError || message}</p><ModalShell open={confirm} onClose={()=>setConfirm(false)} title="Cancel this demo order?" description="This records a terminal cancellation event in this session only. It cannot be undone here. No business cancellation, refund or stock change occurs." footer={<><SecondaryButton onClick={()=>setConfirm(false)}>Keep demo order</SecondaryButton><PrimaryButton onClick={()=>{dispatch({type:'orders/cancel',sessionId:state.session.instanceId,orderId:order.id});setConfirm(false);setMessage('Demo cancellation recorded in this session.');heading.current?.focus();}}>Confirm demo cancellation</PrimaryButton></>}/></>;
+}
+

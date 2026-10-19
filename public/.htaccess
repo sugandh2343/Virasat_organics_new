@@ -1,0 +1,23 @@
+# Root frontend rules only. Preserve public_html/api/.htaccess unchanged.
+DirectoryIndex index.html
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule (^|/)(\.env(?:\..*)?|config(?:\.local)?\.php|composer\.(json|lock)|.*\.(sql|log))$ - [F,L,NC]
+RewriteRule ^(?:backend|private|storage|node_modules|\.git)(?:/|$) - [F,L,NC]
+RewriteRule ^sitemap\.xml$ /api/sitemap.xml [R=302,L]
+# API is always handled by its existing directory rules, never by React.
+RewriteRule ^api(?:/|$) - [L,NC]
+# Preserve PHP entry points (including PATH_INFO); missing PHP must not serve HTML.
+RewriteRule \.php(?:/|$) - [L,NC]
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+# Missing build assets should return 404, not index.html.
+RewriteRule ^assets(?:/|$) - [L,NC]
+RewriteRule ^ index.html [L]
+</IfModule>
+<IfModule mod_headers.c>
+<Files "index.html">
+Header set Cache-Control "no-cache, must-revalidate"
+</Files>
+</IfModule>

@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import { createServer } from 'vite';
+const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom'});
+try {
+ const {browseProducts,hasCataloguePrices,resolveCategory}=await vite.ssrLoadModule('/src/domain/catalogueSelectors.js');
+ const {products}=await vite.ssrLoadModule('/src/mock-data/products.js');
+ const {categories}=await vite.ssrLoadModule('/src/mock-data/categories.js');
+ const {normalizeSearch}=await vite.ssrLoadModule('/src/services/searchService.js');
+ assert.equal(browseProducts(products,categories).length,5);
+ assert.equal(browseProducts(products,categories,{category:'atta-flour'}).length,1);
+ assert.equal(browseProducts(products,categories,{category:'mustard-oils'}).length,4);
+ assert.equal(resolveCategory(categories,'missing'),null);
+ assert.equal(browseProducts(products,categories,{category:'missing'}).length,0);
+ assert.equal(browseProducts(products,categories,{availability:'available'}).length,0);
+ assert.equal(browseProducts(products,categories,{availability:'coming_soon'}).length,5);
+ assert.equal(browseProducts(products,categories,{category:'mustard-oils',availability:'coming_soon',q:' BLACK 500 millilitres '}).length,1);
+ assert.equal(normalizeSearch('  BLACK   500 ml  '),'black 500ml');
+ assert.equal(browseProducts(products,categories,{q:'no such product'}).length,0);
+ assert.equal(browseProducts(products.map(p=>({...p,status:'inactive'})),categories).length,0);
+ assert.equal(hasCataloguePrices(products),false);
+ const fixtures=products.map((p,i)=>({...p,price:i===4?null:100+i*10,stock:2,status:i===2?'out_of_stock':'active'}));
+ assert.equal(browseProducts(fixtures,categories,{availability:'available'}).length,3);
+ assert.equal(browseProducts(fixtures,categories,{availability:'out_of_stock'}).length,1);
+ assert.equal(browseProducts(fixtures,categories,{min:'110',max:'130'}).length,3);
+ assert.deepEqual(browseProducts(fixtures,categories,{sort:'price-desc'}).map(p=>p.price),[130,120,110,100,null]);
+ assert.equal(browseProducts(products,categories,{sort:'name-asc'})[0].name,'Atta');
+ assert.equal(browseProducts(products,categories,{sort:'name-desc'})[0].name,'Yellow Mustard Oil');
+ const {getProductBySlug,updateProduct}=await vite.ssrLoadModule('/src/services/productService.js');
+ await updateProduct(products[0].id,{status:'inactive'});
+ assert.equal(await getProductBySlug(products[0].slug),null);
+ console.log('PASS: categories, availability, combined filters, sorting, normalized search, hidden inactive detail, invalid category, empty results and conditional prices.');
+} finally { await vite.close(); }

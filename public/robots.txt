@@ -1,0 +1,10 @@
+User-agent: *
+Disallow: /admin
+Disallow: /account
+Disallow: /checkout
+Disallow: /cart
+Disallow: /wishlist
+Disallow: /dev/
+Disallow: /api/
+Allow: /api/sitemap.xml
+Sitemap: https://virasatorganics.com/api/sitemap.xml

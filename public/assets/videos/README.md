@@ -1,0 +1,3 @@
+# Homepage hero assets
+Configure src/mock-data/home.js. Set each showcase.products[].image to an approved image URL (for example /assets/products/atta-5kg.webp). The five slots are independent products; images use contain sizing. Current unbranded shapes are illustrative placeholders, not proposed packaging.
+Set video.src to /assets/videos/our-story.mp4 after adding an approved MP4 here. Set video.poster to an approved thumbnail URL and video.captions to a local English WebVTT file when available. No autoplay is enabled; closing the modal unmounts the player. Missing or failed video displays the coming-soon state. Null image/poster values avoid missing-file requests.

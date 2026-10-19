@@ -1,0 +1,52 @@
+import assert from 'node:assert/strict';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
+import { createServer } from 'vite';
+const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom'});
+try {
+ const {products}=await vite.ssrLoadModule('/src/mock-data/products.js');
+ const {initialState,storefrontReducer:sanitizeAction,sanitizePersisted}=await vite.ssrLoadModule('/src/state/store.js');
+ const {decodeStorage,StorefrontProvider}=await vite.ssrLoadModule('/src/state/StorefrontContext.jsx');
+ const {reconcileShopping,cartSummary}=await vite.ssrLoadModule('/src/domain/cartSelectors.js');
+ const {getHeaderCounts}=await vite.ssrLoadModule('/src/mock-data/headerState.js');
+ const {CartItems,CartSummary}=await vite.ssrLoadModule('/src/components/cart/CartContents.jsx');
+ const fixture=products.map(p=>({...p,status:'active',stock:3,price:12.34}));
+ const dispatch=(state,action)=>sanitizeAction(state,action);
+ let state=dispatch(initialState,{type:'catalogue/load',products:fixture,persisted:{}});
+ state=dispatch(state,{type:'cart/add',product:fixture[1],quantity:2});
+ state=dispatch(state,{type:'cart/add',product:fixture[2],quantity:1});
+ assert.equal(state.cart.length,2);assert.equal(getHeaderCounts(state.cart).cart,3);
+ assert.equal(cartSummary(state.cart,fixture).subtotal,37.02);
+ assert.equal(cartSummary(state.cart,fixture).total,null);
+ assert.equal(cartSummary(state.cart,fixture,{shipping:0,tax:0}).total,37.02);
+ assert.equal(cartSummary(state.cart,fixture).canCheckout,true);
+ state=dispatch(state,{type:'cart/quantity',id:fixture[1].id,quantity:99});
+ assert.equal(state.cart[0].quantity,3);
+ const rejected=dispatch(state,{type:'cart/quantity',id:fixture[1].id,quantity:0});assert.equal(rejected,state);
+ state=dispatch(state,{type:'cart/remove',id:fixture[2].id});assert.equal(state.cart.length,1);
+ state=dispatch(state,{type:'wishlist/toggle',id:fixture[3].id});assert.equal(getHeaderCounts(state.cart,state.wishlist).wishlist,1);
+ const restored=dispatch(initialState,{type:'catalogue/load',products:fixture,persisted:decodeStorage(JSON.stringify(state))});
+ assert.deepEqual(restored.cart,state.cart);assert.deepEqual(restored.wishlist,state.wishlist);
+ const synced=dispatch(restored,{type:'storage/sync',value:{cart:[],wishlist:[fixture[0].id]}});
+ assert.equal(synced.cart.length,0);assert.deepEqual(synced.wishlist,[fixture[0].id]);
+ assert.deepEqual(decodeStorage('{bad'),sanitizePersisted(null));
+ assert.deepEqual(decodeStorage(null),sanitizePersisted(null));
+ for(const patch of [{status:'inactive'},{status:'out_of_stock'},{status:'coming_soon'},{price:null},{stock:null},{stock:0}]) {
+  const catalogue=[{...fixture[0],...patch}];
+  const loaded=dispatch(initialState,{type:'catalogue/load',products:catalogue,persisted:{}});
+  assert.equal(dispatch(loaded,{type:'cart/add',product:fixture[0]}),loaded);
+  assert.equal(cartSummary([{productId:fixture[0].id,quantity:1}],catalogue).canCheckout,false);
+ }
+ const invalid=[{...fixture[0],status:'inactive'},fixture[1],{...fixture[2],status:'out_of_stock'}];
+ const cleaned=reconcileShopping({cart:[{productId:'unknown',quantity:2},{productId:fixture[0].id,quantity:1},{productId:fixture[1].id,quantity:10},{productId:fixture[1].id,quantity:2},{productId:fixture[2].id,quantity:1}],wishlist:['unknown',fixture[0].id,fixture[2].id,fixture[2].id]},invalid);
+ assert.equal(cleaned.cart.length,2);assert.equal(cleaned.cart[0].quantity,3);assert.deepEqual(cleaned.wishlist,[fixture[2].id]);
+ assert.equal(cartSummary([{productId:products[0].id,quantity:1}],products).subtotal,null);
+ assert.equal(cartSummary([],products).canCheckout,false);
+ state=dispatch(state,{type:'cart/clear'});assert.equal(state.cart.length,0);
+ state=dispatch(state,{type:'wishlist/toggle',id:fixture[3].id});assert.equal(state.wishlist.length,0);
+ const summary=cartSummary([{productId:fixture[0].id,quantity:2}],fixture);
+ const html=renderToStaticMarkup(React.createElement(MemoryRouter,null,React.createElement(StorefrontProvider,null,React.createElement(CartItems,{items:summary.items}),React.createElement(CartSummary,{summary}))));
+ assert.match(html,/Decrease Atta/);assert.match(html,/24.68/);assert.match(html,/href="\/checkout"/);
+ console.log('PASS: add/remove/clear, separate packs, quantity caps, prices and stock gates, unknown/inactive cleanup, unavailable items, totals, header counts, storage recovery/roundtrip/sync, wishlist and rendered cart controls.');
+}finally{await vite.close();}

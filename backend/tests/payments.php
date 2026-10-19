@@ -1,0 +1,55 @@
+<?php
+declare(strict_types=1);
+require dirname(__DIR__).'/bootstrap/load.php';
+use Virasat\{CatalogueRepository,RazorpayProvider,RazorpayPayments,PaymentController,CommerceService,SessionSecurity,Request,Router,HttpError};
+$count=0;function check($v){global $count;if(!$v)throw new RuntimeException('Assertion '.($count+1).' failed');$count++;}
+function deny(callable $fn,int $status,?string $code=null){try{$fn();}catch(HttpError $e){check($e->status===$status&&($code===null||$e->errorCode===$code));return;}throw new RuntimeException('Expected rejection '.$code);}
+class PaymentTestPDO extends PDO {
+ public function __construct(){parent::__construct('sqlite::memory:',null,null,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);}
+ public function prepare($sql,$options=[]):PDOStatement|false{return parent::prepare(str_replace([' FOR UPDATE','UTC_TIMESTAMP(6)'],['',"strftime('%Y-%m-%d %H:%M:%f','now')"],$sql),$options);}
+}
+$db=new PaymentTestPDO();$manifest=json_decode(file_get_contents(dirname(__DIR__).'/database/manifest.json'),true);
+foreach($manifest['tables']as $name=>$table){$columns=[];foreach($table['columns']as $column=>$definition){$definition=preg_replace('/CHARACTER SET \w+|COLLATE \w+/','',$definition);$definition=str_replace('CURRENT_TIMESTAMP(6)','CURRENT_TIMESTAMP',$definition);if($name==='payment_events'&&$column==='payload_encrypted')$definition='BLOB NULL';$columns[]=$column.' '.$definition;}$db->exec('CREATE TABLE '.$name.' ('.implode(',',$columns).')');}
+$db->exec('ALTER TABLE payments ADD verified_at TEXT; ALTER TABLE payments ADD failure_code TEXT; CREATE TABLE razorpay_order_requests(id TEXT PRIMARY KEY,order_id TEXT UNIQUE,customer_id TEXT,payment_id TEXT UNIQUE,idempotency_key TEXT,status TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP,updated_at TEXT,version INTEGER DEFAULT 1,UNIQUE(customer_id,idempotency_key)); CREATE UNIQUE INDEX event_once ON payment_events(provider,event_id); CREATE UNIQUE INDEX provider_order_once ON payments(provider,provider_order_id); CREATE UNIQUE INDEX provider_payment_once ON payments(provider,provider_payment_id); CREATE UNIQUE INDEX movement_once ON inventory_movements(idempotency_key,product_id,kind);');
+$r=new CatalogueRepository($db);
+function fixture(string $id,string $method='razorpay'):void {global $r;
+ $r->insert('orders',['id'=>$id,'public_reference'=>$id,'customer_id'=>'alice','quote_id'=>'quote-'.$id,'status'=>'placed','payment_method'=>$method,'payment_status'=>'pending','currency'=>'INR','subtotal_paise'=>10000,'shipping_paise'=>0,'tax_paise'=>0,'total_paise'=>10000,'delivery_address_snapshot'=>'{}','customer_snapshot'=>'{}','idempotency_key'=>'synthetic-'.$id,'placed_at'=>gmdate('Y-m-d H:i:s')]);
+ $r->insert('order_items',['id'=>'item-'.$id,'order_id'=>$id,'product_id'=>'product-'.$id,'sku_snapshot'=>'TEST','name_snapshot'=>'Synthetic','size_snapshot'=>'1','quantity'=>1,'unit_price_paise'=>10000,'line_subtotal_paise'=>10000,'tax_paise'=>0]);
+ $r->insert('inventory_balances',['product_id'=>'product-'.$id,'on_hand'=>2,'reserved'=>1]);
+ $r->insert('inventory_reservations',['id'=>'hold-'.$id,'order_id'=>$id,'product_id'=>'product-'.$id,'quantity'=>1,'status'=>'held','expires_at'=>gmdate('Y-m-d H:i:s',time()+600)]);
+}
+$c=['payments'=>['razorpay'=>['enabled'=>true,'key_id'=>'rzp_test_synthetic','key_secret'=>'synthetic-key-secret-only','webhook_secret'=>'synthetic-webhook-only']]];$calls=0;$mode='captured';$amount=10000;$currentOrder='';$serial=0;
+$transport=function($method,$path,$body)use(&$calls,&$mode,&$amount,&$currentOrder,&$serial){$calls++;if($path==='/orders'){if($mode==='timeout')throw new RuntimeException('synthetic transport failure');$currentOrder='order_SYNTHETIC'.(++$serial);return ['id'=>$currentOrder,'amount'=>$body['amount'],'currency'=>'INR','receipt'=>$body['receipt']];}return ['id'=>basename($path),'order_id'=>$currentOrder,'amount'=>$amount,'currency'=>'INR','status'=>$mode,'captured'=>$mode==='captured'];};
+$provider=new RazorpayProvider($c,$transport);$service=new RazorpayPayments($r,$c,$provider);
+check(!(new RazorpayProvider([],$transport))->ready());deny(fn()=>(new RazorpayProvider([],$transport))->createOrder(10000,'test'),503,'PAYMENT_UNAVAILABLE');check($calls===0);
+foreach(['key_id','key_secret','webhook_secret']as $missing){$bad=$c;$bad['payments']['razorpay'][$missing]='';deny(fn()=>(new RazorpayProvider($bad,$transport))->createOrder(10000,'test'),503);}
+$bad=$c;$bad['payments']['razorpay']['enabled']='true';check(!(new RazorpayProvider($bad))->ready());
+$sig=hash_hmac('sha256','order_TEST|pay_TEST',$c['payments']['razorpay']['key_secret']);$provider->verifySignature('order_TEST','pay_TEST',$sig);check(true);deny(fn()=>$provider->verifySignature('order_TEST','pay_OTHER',$sig),400);deny(fn()=>$provider->verifySignature('order_TEST','pay_TEST',str_repeat('0',64)),400);
+fixture('one');fixture('cod','cod');fixture('two');deny(fn()=>$service->create('bob',['orderId'=>'one'],'synthetic-request-one'),404);deny(fn()=>$service->create('alice',['orderId'=>'cod'],'synthetic-request-cod'),409,'PAYMENT_METHOD_CONFLICT');check($calls===0);
+$created=$service->create('alice',['orderId'=>'one'],'synthetic-request-one');check($created['enabled']&&$created['amountPaise']===10000);check(!isset($created['key_secret']));check($service->create('alice',['orderId'=>'one'],'synthetic-request-one')===$created&&$calls===1);
+deny(fn()=>$service->create('alice',['orderId'=>'one'],'synthetic-request-new'),409);deny(fn()=>$service->create('alice',['orderId'=>'two'],'synthetic-request-one'),409);
+$body=['orderId'=>'one','razorpayOrderId'=>$created['providerOrderId'],'razorpayPaymentId'=>'pay_SYNTHETIC','signature'=>hash_hmac('sha256',$created['providerOrderId'].'|pay_SYNTHETIC',$c['payments']['razorpay']['key_secret'])];
+deny(fn()=>$service->verify('bob',$body),404);$amount=9999;deny(fn()=>$service->verify('alice',$body),409,'PAYMENT_DETAILS_MISMATCH');check($r->one('SELECT payment_status FROM orders WHERE id=?',['one'])['payment_status']==='pending');$amount=10000;
+$mode='authorized';check($service->verify('alice',$body)['paymentStatus']==='authorized');check((int)$r->one('SELECT on_hand FROM inventory_balances WHERE product_id=?',['product-one'])['on_hand']===2);
+$mode='captured';check($service->verify('alice',$body)['paymentStatus']==='paid');check($service->verify('alice',$body)['paymentStatus']==='paid');check((int)$r->query('SELECT COUNT(*) FROM inventory_movements')->fetchColumn()===1);check((int)$r->one('SELECT on_hand FROM inventory_balances WHERE product_id=?',['product-one'])['on_hand']===1);
+$raw=json_encode(['event'=>'payment.captured','payload'=>['payment'=>['entity'=>['id'=>'pay_SYNTHETIC','order_id'=>$currentOrder]]]]);$websig=hash_hmac('sha256',$raw,$c['payments']['razorpay']['webhook_secret']);
+deny(fn()=>$service->webhook($raw.' ',$websig,'evt_one'),400,'WEBHOOK_SIGNATURE_INVALID');check($service->webhook($raw,$websig,'evt_one')['received']);$n=$calls;check($service->webhook($raw,$websig,'evt_one')['received']&&$calls===$n);check((int)$r->query('SELECT COUNT(*) FROM payment_events')->fetchColumn()===1);check($r->query('SELECT payload_encrypted FROM payment_events')->fetchColumn()===null);
+$changed=$raw.' ';deny(fn()=>$service->webhook($changed,hash_hmac('sha256',$changed,$c['payments']['razorpay']['webhook_secret']),'evt_one'),409);
+$mode='failed';check($service->verify('alice',$body)['paymentStatus']==='paid');check($r->one('SELECT payment_status FROM orders WHERE id=?',['cod'])['payment_status']==='pending');
+$mode='captured';$second=$service->create('alice',['orderId'=>'two'],'synthetic-request-two');$b2=['orderId'=>'two','razorpayOrderId'=>$second['providerOrderId'],'razorpayPaymentId'=>'pay_SECOND','signature'=>hash_hmac('sha256',$second['providerOrderId'].'|pay_SECOND',$c['payments']['razorpay']['key_secret'])];$mode='failed';check($service->verify('alice',$b2)['paymentStatus']==='failed');$mode='captured';$r->query("UPDATE orders SET status='cancelled' WHERE id='two'");check($service->verify('alice',$b2)['paymentStatus']==='refund_pending');check((int)$r->one('SELECT on_hand FROM inventory_balances WHERE product_id=?',['product-two'])['on_hand']===2);
+fixture('uncertain');$mode='timeout';deny(fn()=>$service->create('alice',['orderId'=>'uncertain'],'synthetic-uncertain-key'),503,'PAYMENT_RECONCILIATION_REQUIRED');$n=$calls;deny(fn()=>$service->create('alice',['orderId'=>'uncertain'],'synthetic-uncertain-key'),409);check($calls===$n);
+fixture('expired');$r->query("UPDATE inventory_reservations SET expires_at='2000-01-01' WHERE order_id='expired'");deny(fn()=>$service->create('alice',['orderId'=>'expired'],'synthetic-expired-key'),409);check($calls===$n);
+deny(fn()=>(new CommerceService($r,[]))->change('one',[],new Request(['HTTP_IF_MATCH'=>'1']),'alice'),409,'ONLINE_ORDER_REVIEW_REQUIRED');
+
+fixture('rollback');$mode='captured';$third=$service->create('alice',['orderId'=>'rollback'],'synthetic-rollback-key');$b3=['orderId'=>'rollback','razorpayOrderId'=>$third['providerOrderId'],'razorpayPaymentId'=>'pay_ROLLBACK','signature'=>hash_hmac('sha256',$third['providerOrderId'].'|pay_ROLLBACK',$c['payments']['razorpay']['key_secret'])];
+$db->exec("CREATE TRIGGER fail_payment BEFORE UPDATE ON payments WHEN NEW.status='captured' BEGIN SELECT RAISE(ABORT,'synthetic rollback'); END;");
+try{$service->verify('alice',$b3);throw new RuntimeException('Expected rollback');}catch(HttpError $e){check($e->status===409);}catch(PDOException $e){check(true);}
+check((int)$r->one('SELECT on_hand FROM inventory_balances WHERE product_id=?',['product-rollback'])['on_hand']===2);check($r->one('SELECT status FROM inventory_reservations WHERE order_id=?',['rollback'])['status']==='held');$db->exec('DROP TRIGGER fail_payment');
+check($service->verify('alice',$b3)['paymentStatus']==='paid');
+$mode='authorized';check($service->verify('alice',$b3)['paymentStatus']==='paid');
+
+$dir=sys_get_temp_dir().'/virasat-payments-'.bin2hex(random_bytes(8));mkdir($dir,0700);$config=['session'=>['name'=>'__Host-virasat_customer','path'=>$dir,'idle_seconds'=>1800,'absolute_seconds'=>3600],'trusted_proxies'=>[],'app_origin'=>'https://virasatorganics.com'];
+try{foreach(['order','verify']as $action){$request=new Request(['HTTPS'=>'on','REQUEST_METHOD'=>'POST','REQUEST_URI'=>'/api/payments/razorpay/'.$action]);$router=new Router();(new PaymentController($config,$request))->register($router);$_SESSION=[];deny(fn()=>$router->dispatch($request),401);$_SESSION['customer_id']='alice';deny(fn()=>$router->dispatch($request),403);}
+ $request=new Request(['HTTPS'=>'on','REQUEST_METHOD'=>'POST','REQUEST_URI'=>'/api/payments/razorpay/webhook']);$router=new Router();(new PaymentController($config,$request))->register($router);deny(fn()=>$router->dispatch($request),503,'PAYMENT_UNAVAILABLE');
+}finally{if(session_status()===PHP_SESSION_ACTIVE){$_SESSION=[];session_destroy();}foreach(glob($dir.'/sess_*')as $f)unlink($f);rmdir($dir);}
+echo 'PASS: '.$count." offline payment assertions. Synthetic transport + SQLite; no Razorpay or MySQL connection.\n";

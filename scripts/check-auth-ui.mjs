@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {MemoryRouter} from 'react-router-dom';
+import {createServer} from 'vite';
+const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom'});
+try {
+ const auth=await vite.ssrLoadModule('/src/services/authService.js');
+ const {initialState,storefrontReducer,sanitizePersisted}=await vite.ssrLoadModule('/src/state/store.js');
+ const {StorefrontProvider}=await vite.ssrLoadModule('/src/state/StorefrontContext.jsx');
+ const {default:AuthFlow}=await vite.ssrLoadModule('/src/components/auth/AuthFlow.jsx');
+ assert.equal(auth.normalizeMobile('+91 98765 43210'),'9876543210');
+ for(const value of ['','123','1234567890','98765432100','98765abc10'])assert.equal(auth.isValidMobile(value),false);
+ assert.equal(auth.isValidMobile('9876543210'),true);
+ await assert.rejects(auth.beginOtpPreview('bad'));
+ const preview=await auth.beginOtpPreview('9876543210');assert.match(preview.message,/No SMS was sent/);
+ assert.equal((await auth.checkOtpFormat('987654')).verified,false);
+ assert.match(auth.otpFormatMessage('12'),/exactly six digits/);
+ assert.equal(auth.validateProfile({name:'Demo Person',mobile:'9876543210',email:''}),null);
+ assert.ok(auth.validateProfile({name:'',mobile:'9876543210'}));
+ assert.ok(auth.validateProfile({name:'Demo',mobile:'9876543210',email:'bad'}));
+ assert.equal(auth.safeReturnPath('https://example.com'),'/account');
+ assert.equal(auth.safeReturnPath('//example.com'),'/account');
+ assert.equal(auth.safeReturnPath('/checkout'),'/checkout');
+ let state=storefrontReducer(initialState,{type:'session/demo',profile:{name:'Demo Person',mobile:'9876543210',email:'demo@example.com'}});
+ assert.equal(state.session.mode,'demo');assert.equal(state.session.verified,false);
+ assert.equal(state.session.profile.name,'Demo Person');
+ assert.equal('session' in sanitizePersisted(state),false);
+ state=storefrontReducer(state,{type:'session/clear'});assert.deepEqual(state.session,initialState.session);
+ const html=renderToStaticMarkup(React.createElement(MemoryRouter,null,React.createElement(StorefrontProvider,null,React.createElement(AuthFlow))));
+ assert.match(html,/DEV DEMO MODE/);assert.match(html,/No SMS is sent/);assert.match(html,/Mobile number/);
+ const service=fs.readFileSync('src/services/authService.js','utf8');
+ assert.doesNotMatch(service,/fetch\(|axios|firebase\/auth|123456/);
+ const flow=fs.readFileSync('src/components/auth/AuthFlow.jsx','utf8');
+ assert.match(flow,/Continue as Demo Customer/);assert.doesNotMatch(flow,/localStorage|sessionStorage/);
+ console.log('PASS: mobile normalization, OTP format-only behavior, demo disclosure, optional profile, safe return paths, memory-only demo session and logout.');
+}finally{await vite.close();}

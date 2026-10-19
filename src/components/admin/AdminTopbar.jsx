@@ -1,0 +1,10 @@
+import {apiMode} from '../../services/catalogueApi';
+import { useRef,useEffect } from 'react';
+import { Link,useLocation } from 'react-router-dom';
+import { Menu,PanelLeftClose,PanelLeftOpen,SlidersHorizontal,RefreshCw } from 'lucide-react';
+import { IconButton } from '../ui';
+export default function AdminTopbar({mobileOpen,onMobileToggle,collapsed,onCollapse,dense,onDensity,retry,onLogout}) {
+ const preferences=useRef(null);const {pathname}=useLocation();
+ useEffect(()=>{if(preferences.current)preferences.current.open=false;},[pathname]);
+ return <header className="admin-topbar"><div className="admin-topbar-start"><IconButton className="admin-mobile-toggle" label="Open admin navigation" aria-expanded={mobileOpen} aria-controls="admin-mobile-drawer" onClick={onMobileToggle}><Menu size={21}/></IconButton><IconButton className="admin-desktop-toggle" label={collapsed?'Expand sidebar':'Collapse sidebar'} aria-expanded={!collapsed} aria-controls="admin-desktop-sidebar" onClick={onCollapse}>{collapsed?<PanelLeftOpen size={21}/>:<PanelLeftClose size={21}/>}</IconButton><div><strong>Store workspace</strong><span>{apiMode?'Secure business operations':'Development preview'}</span></div></div><div className="admin-topbar-actions"><IconButton label={apiMode?'Refresh business data':'Refresh mock data'} onClick={retry}><RefreshCw size={18}/></IconButton><details ref={preferences} className="admin-preferences" onKeyDown={event=>{if(event.key==='Escape'){event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus();}}}><summary><SlidersHorizontal size={18} aria-hidden="true"/><span>Preferences</span></summary><div><p>Preview preferences · this visit only</p><label><input type="checkbox" checked={dense} onChange={event=>onDensity(event.target.checked)}/> Compact table rows</label><Link to="/admin/profile">Admin Profile</Link><button type="button" onClick={()=>{preferences.current.open=false;onLogout();}}>Logout / leave preview</button></div></details></div></header>;
+}

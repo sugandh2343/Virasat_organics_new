@@ -1,0 +1,25 @@
+.auth-page{max-width:42rem}
+.auth-page>h1{font-size:clamp(2.5rem,6vw,3.5rem);margin-bottom:2rem}
+.auth-flow h2{font-size:2rem;line-height:1.15;margin-block:1.5rem}
+.auth-demo-label{display:inline-block;border:1px solid var(--color-gold);padding:.3rem .7rem;border-radius:var(--radius-pill);color:var(--color-accent-text);font-size:.7rem;letter-spacing:.1em}
+.auth-notice{margin-top:1rem;color:var(--color-muted-text);font-size:.875rem}
+.auth-flow form{display:grid;gap:.75rem;margin-top:1.5rem}
+.auth-flow label{font-size:.875rem}
+.auth-flow input{min-width:0;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-sm);padding:.85rem;background:var(--color-cream);color:var(--color-forest);font:inherit;min-height:48px}
+.auth-phone{display:flex;align-items:center;border:1px solid var(--color-border);border-radius:var(--radius-sm);overflow:hidden}
+.auth-phone>span{padding-left:1rem}
+.auth-phone input{border:0}
+.auth-otp{letter-spacing:.25em;font-size:1.2rem!important}
+.auth-flow>.button{width:100%;margin-top:.75rem}
+.auth-feedback{min-height:1.75rem;margin-block:1rem;color:var(--color-accent-text);font-size:.875rem}
+.auth-secondary{display:flex;flex-wrap:wrap;gap:1rem;margin-block:1rem}
+.auth-secondary button{border:0;background:none;color:var(--color-forest);text-decoration:underline;min-height:44px;padding:0;font-size:.8rem}
+.auth-secondary button:disabled{color:var(--color-muted-text);cursor:not-allowed}
+.auth-modal{width:35rem}
+.account-menu nav{display:grid;margin-block:1.5rem}
+.account-menu nav a{padding:1rem 0;border-bottom:1px solid var(--color-border)}
+.account-menu>.button{width:100%}
+.account-session-strip{padding-top:2rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+.header-tool--account{border:0;background:transparent;color:inherit;cursor:pointer;font:inherit}
+@media(max-width:47.99rem){.auth-modal{width:100%;max-width:100%;height:100dvh;max-height:100dvh;margin:0;border-radius:0}.auth-modal[open]{display:flex;flex-direction:column}.auth-modal .overlay-content{overflow:auto;flex:1}.auth-modal .overlay-header{flex-shrink:0}}
+.auth-phone>span{flex-shrink:0;white-space:nowrap;padding-right:.5rem}.auth-phone input{flex:1;width:0}@media(max-width:47.99rem){.overlay-shell.auth-modal{width:100%;max-width:100%;height:100dvh;max-height:100dvh;margin:0;border-radius:0}}

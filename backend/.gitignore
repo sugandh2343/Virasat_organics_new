@@ -1,0 +1,6 @@
+/config/config.php
+/config/migration.php
+/storage/*
+!/storage/.gitkeep
+/config/config.local.php
+/config/test.php

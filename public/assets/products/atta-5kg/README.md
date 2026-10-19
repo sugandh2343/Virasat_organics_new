@@ -1,0 +1,1 @@
+Reserved for approved front.webp, back.webp, close-up.webp, ingredients.webp, lifestyle.webp, product.mp4, poster.webp and captions.en.vtt. Configure product images[] and videos[] only after supplying files. No authentic media is included.

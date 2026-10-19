@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {createServer} from 'vite';
+const vite=await createServer({server:{middlewareMode:true,hmr:false},appType:'custom'});
+try {
+ const {createDemoSession,safeReturnPath}=await vite.ssrLoadModule('/src/services/authService.js');
+ const {saveDemoProfile,saveDemoAddress,deleteDemoAddress,defaultDemoAddress,sessionAddresses,validateAddress}=await vite.ssrLoadModule('/src/services/customerService.js');
+ const {initialState,storefrontReducer,sanitizePersisted}=await vite.ssrLoadModule('/src/state/store.js');
+ const {demoLocations}=await vite.ssrLoadModule('/src/mock-data/account.js');
+ let session=createDemoSession({mobile:'9876543210'});
+ const other=createDemoSession({mobile:'9876543210'});
+ assert.notEqual(session.instanceId,other.instanceId);
+ assert.equal(safeReturnPath('/account/addresses'),'/account/addresses');
+ await assert.rejects(saveDemoProfile(session,{name:'',mobile:'9876543210'}));
+ const profile=await saveDemoProfile(session,{name:'Demo Name',mobile:'+91 9876543210',email:''});assert.equal(profile.mobile,'9876543210');
+ const fixture={recipient:'Demo Recipient',phone:'9876543210',line1:'Demo building',line2:'Demo street',locality:'Demo locality',city:'Demo city',state:'Demo state',postalCode:'110001',type:'Home'};
+ assert.ok(validateAddress({}).postalCode);assert.ok(validateAddress({...fixture,phone:'bad'}).phone);
+ session.addresses=await saveDemoAddress(session,fixture);
+ const first=session.addresses[0].id;assert.ok(session.addresses[0].isDefault);
+ session.addresses=await saveDemoAddress(session,{...fixture,type:'Work'});const second=session.addresses[1].id;
+ assert.notEqual(first,second);
+ session.addresses=await saveDemoAddress(session,{...fixture,line1:'Updated demo building'},first);
+ assert.equal(session.addresses[0].id,first);assert.equal(session.addresses[0].line1,'Updated demo building');
+ session.addresses=await defaultDemoAddress(session,second);
+ assert.equal(session.addresses.filter(a=>a.isDefault).length,1);assert.equal(session.addresses[1].isDefault,true);
+ await assert.rejects(saveDemoAddress(other,fixture,first));await assert.rejects(deleteDemoAddress(other,first));
+ assert.equal(sessionAddresses({...other,addresses:session.addresses}).length,0);
+ let state={...initialState,session};
+ state=storefrontReducer(state,{type:'session/address-select',id:second});assert.equal(state.location.postalCode,'110001');
+ session.addresses=await deleteDemoAddress(session,second);
+ state=storefrontReducer(state,{type:'session/addresses',sessionId:session.instanceId,addresses:session.addresses});
+ assert.equal(state.location,null);assert.equal(state.session.addresses[0].isDefault,true);
+ const stale=storefrontReducer(state,{type:'session/profile',sessionId:other.instanceId,profile});assert.equal(stale,state);
+ assert.equal('session' in sanitizePersisted(state),false);
+ state=storefrontReducer(state,{type:'session/clear'});assert.equal(state.session.mode,'guest');assert.equal(sessionAddresses(state.session).length,0);
+ assert.equal(new Set(demoLocations.map(x=>x.id)).size,demoLocations.length);
+ for(const value of demoLocations){assert.match(value.label,/DEMO/);assert.ok(!('latitude' in value));assert.ok(!('longitude' in value));}
+ const source=fs.readFileSync('src/components/account/LocationSelector.jsx','utf8');
+ assert.doesNotMatch(source,/navigator.geolocation|google.maps|fetch\(/);
+ assert.match(source,/locationCopy.gps/);
+ console.log('PASS: profile/address validation, add/edit/delete/default, stable IDs, session ownership/reset, selection PIN, safe handoff and explicitly static suggestions.');
+}finally{await vite.close();}

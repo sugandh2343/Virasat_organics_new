@@ -1,0 +1,20 @@
+import {createApiClient} from './apiClient';
+import {customerWrite,customerPage} from './customerApi';
+import {adminRequest,mutate} from './catalogueApi';
+const publicRead=createApiClient();
+export const commerceStatus=async()=> (await publicRead('/commerce/status')).data;
+export const checkDelivery=postalCode=>customerWrite('/delivery/check',{method:'POST',body:{postalCode}});
+export const checkoutQuote=(addressId,items)=>customerWrite('/checkout/quote',{method:'POST',body:{addressId,items:items.map(({productId,quantity})=>({productId,quantity})),paymentMethod:'cod'}});
+export const placeCodOrder=(quoteId,idempotencyKey,deliveryInstructions='')=>customerWrite('/orders',{method:'POST',idempotencyKey,body:{quoteId,paymentMethod:'cod',deliveryInstructions}});
+export const customerOrders=(page=1,status='')=>customerPage('/me/orders?page='+page+'&pageSize=20'+(status?'&status='+encodeURIComponent(status):''));
+export const customerOrder=async id=>(await customerPage('/me/orders/'+encodeURIComponent(id))).data;
+export const cancelCustomerOrder=(id,version)=>customerWrite('/me/orders/'+encodeURIComponent(id)+'/cancel',{method:'POST',version,body:{}});
+export const adminOrders=(page=1,status='')=>adminRequest('/admin/orders?page='+page+'&pageSize=20'+(status?'&status='+encodeURIComponent(status):''));
+export const adminOrder=async id=>(await adminRequest('/admin/orders/'+encodeURIComponent(id))).data;
+export const updateOrder=(id,version,status,internalNote)=>mutate('/admin/orders/'+encodeURIComponent(id),{method:'PATCH',version,body:{status,internalNote}});
+export const deliverySettings=async()=> (await adminRequest('/admin/delivery/settings')).data;
+export const saveDeliverySettings=(body,version)=>mutate('/admin/delivery/settings',{method:'PATCH',version,body});
+export const saveDeliveryZone=(body,id,version)=>mutate('/admin/delivery/zones'+(id?'/'+encodeURIComponent(id):''),{method:id?'PATCH':'POST',version,body});
+export const orderLabels={placed:'Placed',confirmed:'Confirmed',packed:'Packed',shipped:'Shipped',out_for_delivery:'Out for Delivery',delivered:'Delivered',cancelled:'Cancelled'};
+export const nextStatus={placed:'confirmed',confirmed:'packed',packed:'shipped',shipped:'out_for_delivery',out_for_delivery:'delivered'};
+export function paiseText(value){if(!Number.isSafeInteger(value)||value<0)return 'Not configured';const n=BigInt(value);return '₹'+(n/100n).toLocaleString('en-IN')+'.'+String(n%100n).padStart(2,'0');}

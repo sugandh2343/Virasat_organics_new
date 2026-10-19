@@ -1,0 +1,6 @@
+.inline-media-upload {margin: .75rem 0 1rem; padding: 1rem; border: 1px solid #c9b989; border-radius: .6rem; min-width: 0;}
+.inline-media-upload label {display: grid; gap: .5rem; font-weight: 500;}
+.inline-media-upload input {display:block; width:100%; max-width:100%; min-width:0; font:inherit;}
+.inline-media-upload input::file-selector-button {padding:.65rem .85rem; margin-right:.6rem; border:1px solid #204a36; border-radius:.35rem; background:#204a36; color:#fff; cursor:pointer;}
+.inline-media-upload small {display:block; margin-top:.65rem; line-height:1.5;}
+.inline-media-upload [role=alert] {color:#8a2525; overflow-wrap:anywhere;}

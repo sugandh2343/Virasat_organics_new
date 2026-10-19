@@ -1,0 +1,20 @@
+export const homepageFields={
+ hero:[['showcase.image.mediaId','Full hero image','image'],['showcase.image.alt','Full hero image alt text'],['title','Headline'],['emphasis','Headline emphasis'],['eyebrow','Eyebrow'],['description','Description','textarea'],['action.label','Primary CTA label'],['action.to','Primary CTA destination'],['secondaryAction.label','Secondary CTA label'],['secondaryAction.to','Secondary CTA destination'],['showcase.title','Showcase title'],['showcase.caption','Showcase caption']],
+ categories:[['shopping.categories.title','Heading'],['shopping.categories.description','Description','textarea'],['shopping.categories.eyebrow','Eyebrow']],
+ collection:[['shopping.collection.title','Heading'],['shopping.collection.description','Description','textarea'],['shopping.collection.actionLabel','CTA label'],['shopping.collection.actionTo','CTA destination'],['shopping.collection.editorial.enabled','Show editorial accent','boolean'],['shopping.collection.editorial.title','Editorial headline']],
+ introduction:[['media.introduction.title','Heading'],['media.introduction.description','Description','textarea'],['media.introduction.actionLabel','Play button label'],['video.title','Video title'],['video.description','Video description','textarea'],['video.mediaId','Brand video','video'],['video.posterMediaId','Poster image','image']],
+ gallery:[['media.gallery.title','Heading'],['media.gallery.description','Description','textarea']],
+ story:[['story.title','Heading'],['story.description','Description','textarea'],['story.eyebrow','Eyebrow'],['story.image.mediaId','Story image','image'],['story.image.alt','Image alt text'],['story.action.label','CTA label'],['story.action.to','CTA destination']],
+ values:[['values.title','Heading']],
+ journal:[['journal.title','Heading'],['journal.description','Description','textarea'],['journal.action.label','CTA label'],['journal.action.to','CTA destination']],
+ testimonials:[['testimonials.title','Heading'],['testimonials.description','Description','textarea']],
+ newsletter:[['newsletter.title','Heading'],['newsletter.description','Description','textarea'],['newsletter.actionLabel','Button label'],['newsletter.placeholder','Input placeholder']],
+};
+export const settingsFields={
+ General:[['name','Company display name'],['legalName','Legal company name (if supplied)'],['logoMediaId','Brand logo','image'],['logoAlt','Logo alt text'],['email','Support email','email'],['phone','Support phone'],['whatsapp','WhatsApp'],['address','Business address','textarea'],['operatingHours','Operating hours'],['introduction','Footer brand description','textarea']],
+ Compliance:[['gstin.value','GSTIN (format only)'],['gstin.visible','Display GSTIN publicly','boolean'],['fssai.value','FSSAI license number (format only)'],['fssai.visible','Display FSSAI publicly','boolean'],['registrationDetails','Optional registration details','textarea']],
+ Store:[['currency','Currency (INR)','currency'],['store.active','Store active (maintenance notice when off)','boolean'],['store.acceptOrders','Order acceptance display setting','boolean'],['contactsVisible','Show supplied contact details','boolean'],['footerDescriptionVisible','Show footer description','boolean'],['footerNote','Footer preview note','textarea'],['announcementEnabled','Show announcement bar','boolean'],['previewNotice','Announcement text']],
+ Delivery:[['delivery.serviceablePins','Allowed PIN codes (one per line)','lines'],['delivery.configured','Enable explicit demo coverage','boolean'],['delivery.shipping','Shipping charge','number'],['delivery.freeShippingThreshold','Free-shipping threshold','number'],['delivery.minimumOrder','Minimum order amount','number'],['codEnabled','COD enabled','boolean'],['delivery.origin','Optional origin location (text only)','textarea']],
+ Payments:[['codEnabled','COD enabled','boolean']],
+ SEO:[['seo.title','Site title'],['seo.description','Site description','textarea'],['seo.image.mediaId','Default social preview image','image'],['seo.siteUrl','Site URL metadata placeholder']],
+};
